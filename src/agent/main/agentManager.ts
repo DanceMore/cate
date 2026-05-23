@@ -54,10 +54,11 @@ function resolvePiCliPath(): string {
 }
 
 // RpcClient hardcodes `spawn("node", ...)`, so `node` must be on PATH.
-// When launched from Finder/Dock the inherited PATH is minimal and may not
-// include node. Even with the resolved shell env, the user may not have a
-// standalone node install (e.g. only Electron is present). In that case we
-// create a `node` symlink to process.execPath + ELECTRON_RUN_AS_NODE=1.
+//
+// In production we MUST use Electron's own binary (with ELECTRON_RUN_AS_NODE=1)
+// because it has built-in asar support — a regular system `node` can't resolve
+// modules from inside the asar archive. In dev we fall back to the system node
+// only if one exists; otherwise we shim Electron the same way.
 let fallbackNodeDir: string | null = null
 
 function nodeExistsOnPath(env: Record<string, string>): boolean {
@@ -75,7 +76,7 @@ function nodeExistsOnPath(env: Record<string, string>): boolean {
   return false
 }
 
-function ensureFallbackNode(): string {
+function ensureElectronNodeShim(): string {
   if (fallbackNodeDir) return fallbackNodeDir
   const dir = path.join(app.getPath('temp'), 'cate-node-shim')
   fs.mkdirSync(dir, { recursive: true })
@@ -89,12 +90,13 @@ function ensureFallbackNode(): string {
 
 function buildAgentEnv(): Record<string, string> {
   const env = { ...getShellEnv() }
-  if (!nodeExistsOnPath(env)) {
-    const shimDir = ensureFallbackNode()
+  const needsShim = app.isPackaged || !nodeExistsOnPath(env)
+  if (needsShim) {
+    const shimDir = ensureElectronNodeShim()
     const sep = process.platform === 'win32' ? ';' : ':'
     env.PATH = shimDir + sep + (env.PATH || '')
     env.ELECTRON_RUN_AS_NODE = '1'
-    log.info('[agentManager] node not found on PATH, using Electron shim')
+    log.info('[agentManager] using Electron as node (packaged=%s)', app.isPackaged)
   }
   return env
 }

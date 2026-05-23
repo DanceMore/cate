@@ -26,7 +26,9 @@ function agentDir(): string {
 }
 
 function piPackageDir(): string {
-  return path.join(app.getAppPath(), 'node_modules', '@earendil-works', 'pi-coding-agent')
+  const base = app.getAppPath()
+  const root = base.includes('app.asar') ? base.replace('app.asar', 'app.asar.unpacked') : base
+  return path.join(root, 'node_modules', '@earendil-works', 'pi-coding-agent')
 }
 
 async function copyIfMissing(src: string, dest: string): Promise<void> {

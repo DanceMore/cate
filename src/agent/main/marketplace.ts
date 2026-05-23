@@ -56,7 +56,9 @@ function settingsPath(): string {
 
 function piBinaryPath(): string {
   const binName = process.platform === 'win32' ? 'pi.cmd' : 'pi'
-  return path.join(app.getAppPath(), 'node_modules', '.bin', binName)
+  const base = app.getAppPath()
+  const root = base.includes('app.asar') ? base.replace('app.asar', 'app.asar.unpacked') : base
+  return path.join(root, 'node_modules', '.bin', binName)
 }
 
 /** Heuristic: pi extensions that call ctx.ui.custom(...) need a real terminal
