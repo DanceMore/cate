@@ -23,6 +23,7 @@ export interface DockTabActionsParams {
   getPanelProp?: (panelId: string) => PanelState | undefined
   onClosePanel?: (panelId: string) => void
   onPanelRemoved?: (panelId: string) => void
+  onPanelRenamed?: (panelId: string, title: string) => void
   excludePanelTypes?: PanelType[]
   localOnly?: boolean
   activePanel: PanelState | undefined
@@ -31,7 +32,7 @@ export interface DockTabActionsParams {
 export function useDockTabActions(params: DockTabActionsParams) {
   const {
     stack, zone, dockStoreApi, workspaceId, getPanelProp,
-    onClosePanel, onPanelRemoved, excludePanelTypes, localOnly, activePanel,
+    onClosePanel, onPanelRemoved, onPanelRenamed, excludePanelTypes, localOnly, activePanel,
   } = params
 
   const setActiveTab = useCallback((stackId: string, index: number) => {
@@ -53,6 +54,7 @@ export function useDockTabActions(params: DockTabActionsParams) {
     if (trimmed) {
       const wsId = workspaceId ?? useAppStore.getState().selectedWorkspaceId
       if (wsId) useAppStore.getState().updatePanelTitle(wsId, panelId, trimmed)
+      onPanelRenamed?.(panelId, trimmed)
     }
     setRenameId(null)
   }
