@@ -87,6 +87,8 @@ export const TabPill = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTM
 export interface DockTabBarProps {
   stack: DockTabStackType
   compact?: boolean
+  /** Workspace the tabs belong to — scopes the agent-status lookup. */
+  workspaceId?: string
   getPanel: (panelId: string) => PanelState | undefined
   getPanelTitle: (panelId: string) => string
   onClosePanel?: (panelId: string) => void
@@ -118,7 +120,7 @@ export interface DockTabBarProps {
 
 export function DockTabBar(props: DockTabBarProps) {
   const {
-    stack, compact, getPanel, getPanelTitle, onClosePanel,
+    stack, compact, workspaceId, getPanel, getPanelTitle, onClosePanel,
     onTabClick, onTabMouseDown, onTabContextMenu,
     renameId, renameValue, renameInputRef, setRenameValue, setRenameId, commitRename, beginRename,
     springLoadTimer, setActiveTab,
@@ -127,7 +129,7 @@ export function DockTabBar(props: DockTabBarProps) {
   } = props
 
   const worktreeColorByPanel = useWorktreeColorByPanel()
-  const agentInfoByPanel = useAgentInfoByPanel()
+  const agentInfoByPanel = useAgentInfoByPanel(workspaceId)
 
   // Build the visible tab list (skip the in-flight tab when source === this
   // stack) and choose where to slot the placeholder. Clamp to >=1 so a

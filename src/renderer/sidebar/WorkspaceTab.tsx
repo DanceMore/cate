@@ -220,7 +220,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       listeningPorts: ws.listeningPorts,
     }
   }))
-  const agentInfoByPanel = useAgentInfoByPanel()
+  const agentInfoByPanel = useAgentInfoByPanel(workspace.id)
 
   const liveLocations = useDockStore((s) => s.panelLocations)
   const panelLocations = isSelected ? liveLocations : workspace.dockState?.locations

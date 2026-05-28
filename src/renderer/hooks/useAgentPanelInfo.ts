@@ -24,18 +24,21 @@ function resolvePanelId(key: string): string {
   return terminalRegistry.panelIdForPty(key) ?? key
 }
 
-function selectAgentInfoByPanel(s: StatusStore): Record<string, AgentPanelInfo> {
+function selectAgentInfoByPanel(
+  s: StatusStore,
+  workspaceId: string | undefined,
+): Record<string, AgentPanelInfo> {
   const out: Record<string, AgentPanelInfo> = {}
-  for (const ws of Object.values(s.workspaces)) {
-    for (const [key, state] of Object.entries(ws.agentState)) {
-      // `agentName` is kept populated after the agent exits so the status
-      // footer can still read "Finished (Claude Code)". Gate the name/logo on
-      // `agentPresent` so the icon reverts to the terminal glyph the moment
-      // the process is gone; leave `state` ungated so the finished/awaiting
-      // indicators still render.
-      const name = ws.agentPresent[key] ? (ws.agentName[key] ?? null) : null
-      out[resolvePanelId(key)] = { state, name, logo: getAgentLogo(name) }
-    }
+  const ws = workspaceId ? s.workspaces[workspaceId] : undefined
+  if (!ws) return out
+  for (const [key, state] of Object.entries(ws.agentState)) {
+    // `agentName` is kept populated after the agent exits so the status
+    // footer can still read "Finished (Claude Code)". Gate the name/logo on
+    // `agentPresent` so the icon reverts to the terminal glyph the moment
+    // the process is gone; leave `state` ungated so the finished/awaiting
+    // indicators still render.
+    const name = ws.agentPresent[key] ? (ws.agentName[key] ?? null) : null
+    out[resolvePanelId(key)] = { state, name, logo: getAgentLogo(name) }
   }
   return out
 }
@@ -54,8 +57,13 @@ function agentInfoMapEqual(
   return true
 }
 
-/** Per-panel agent status keyed by panelId. Custom equality keeps tabs from
- *  re-rendering on every 1s poll tick when nothing actually changed. */
-export function useAgentInfoByPanel(): Record<string, AgentPanelInfo> {
-  return useStoreWithEqualityFn(useStatusStore, selectAgentInfoByPanel, agentInfoMapEqual)
+/** Per-panel agent status keyed by panelId, scoped to one workspace. Custom
+ *  equality keeps tabs from re-rendering on every 1s poll tick when nothing
+ *  actually changed. */
+export function useAgentInfoByPanel(workspaceId: string | undefined): Record<string, AgentPanelInfo> {
+  return useStoreWithEqualityFn(
+    useStatusStore,
+    (s) => selectAgentInfoByPanel(s, workspaceId),
+    agentInfoMapEqual,
+  )
 }
