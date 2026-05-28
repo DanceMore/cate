@@ -195,6 +195,12 @@ const AGENT_DEFINITIONS: { displayName: string; match: (name: string) => boolean
     match: (n) => n === 'codex',
   },
   {
+    // Successor to Gemini CLI.
+    displayName: 'Antigravity',
+    match: (n) => n === 'antigravity',
+  },
+  {
+    // Kept for legacy installs; Google's coding CLI moved to Antigravity.
     displayName: 'Gemini CLI',
     match: (n) => n === 'gemini',
   },
@@ -205,6 +211,11 @@ const AGENT_DEFINITIONS: { displayName: string; match: (name: string) => boolean
   {
     displayName: 'OpenCode',
     match: (n) => n === 'opencode',
+  },
+  {
+    // forgecode.dev — installs as the `forge` binary.
+    displayName: 'Forge Code',
+    match: (n) => n === 'forge' || n === 'forgecode',
   },
   {
     // @mariozechner/pi-coding-agent — installs as the `pi` binary.
