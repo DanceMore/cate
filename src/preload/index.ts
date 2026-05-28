@@ -459,9 +459,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       terminalId: string,
       activity: unknown,
       agentName: unknown,
-      subprocessActive: unknown,
       agentPresent: unknown,
-      isStreaming: unknown,
     ) => void,
   ): () => void {
     const listener = (
@@ -469,11 +467,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       terminalId: string,
       activity: unknown,
       agentName: unknown,
-      subprocessActive: unknown,
       agentPresent: unknown,
-      isStreaming: unknown,
     ): void => {
-      callback(terminalId, activity, agentName, subprocessActive, agentPresent, isStreaming)
+      callback(terminalId, activity, agentName, agentPresent)
     }
     ipcRenderer.on(SHELL_ACTIVITY_UPDATE, listener)
     return () => {

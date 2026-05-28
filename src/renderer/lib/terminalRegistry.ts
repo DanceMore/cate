@@ -16,8 +16,28 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { terminalRestoreData, replayTerminalLog } from './session'
 import { awaitWorkspaceSync, useAppStore } from '../stores/appStore'
 import { extractAgentTitleSegment } from './agentTitleParser'
+import { titleIndicatesRunning, outputShowsBodySpinner } from './agentSpinner'
+import { noteAgentTitle, noteAgentSpinnerByte } from './agentScreenDetector'
 import { scanTerminalChunkForUrls, clearTerminalUrlBuffer } from './terminalUrlAutoOpen'
 import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from './themeManager'
+
+/** Agent terminals show the clean detected agent name (e.g. "Codex", "Claude
+ *  Code") as their tab title — set by useProcessMonitor — not the agent's raw
+ *  OSC title, which is inconsistent across agents (codex → cwd, claude →
+ *  "✳ Claude Code", others → session labels) and flickers the spinner glyph.
+ *  Only plain shells (no detected agent) let the OSC title drive the tab name,
+ *  where it usefully reflects the cwd. */
+function applyOscTitleIfNoAgent(
+  ptyId: string,
+  workspaceId: string,
+  panelId: string,
+  title: string,
+): void {
+  const status = useStatusStore.getState()
+  const wsId = status.terminalWorkspaceMap[ptyId] ?? workspaceId
+  if (status.workspaces[wsId]?.agentName[ptyId]) return
+  useAppStore.getState().updatePanelTitleFromAgent(workspaceId, panelId, title)
+}
 
 /** Read the configured scrollback limit, clamped to a sane range. */
 function getScrollback(): number {
@@ -465,6 +485,7 @@ async function getOrCreate(panelId: string, opts: CreateOpts): Promise<RegistryE
       if (id === ptyId) {
         terminal.write(data)
         try { scanTerminalChunkForUrls(panelId, opts.workspaceId, data) } catch { /* ignore */ }
+        if (outputShowsBodySpinner(data)) noteAgentSpinnerByte(ptyId)
       }
     })
     cleanupListeners.push(removeDataListener)
@@ -485,11 +506,13 @@ async function getOrCreate(panelId: string, opts: CreateOpts): Promise<RegistryE
     const titleDisposable = terminal.onTitleChange((raw) => {
       const parsed = extractAgentTitleSegment(raw)
       if (!parsed) return
+      const running = titleIndicatesRunning(parsed)
       // Defer to a microtask so OSC sequences arriving during xterm.write()
       // (e.g. scrollback replay on attach) don't run set() inside React's
       // commit phase, which would trip "Maximum update depth".
       queueMicrotask(() => {
-        useAppStore.getState().updatePanelTitleFromAgent(opts.workspaceId, panelId, parsed)
+        noteAgentTitle(ptyId, running)
+        applyOscTitleIfNoAgent(ptyId, opts.workspaceId, panelId, parsed)
       })
     })
     cleanupListeners.push(() => titleDisposable.dispose())
@@ -653,6 +676,7 @@ async function reconnectTerminal(
     if (id === ptyId) {
       terminal.write(data)
       try { scanTerminalChunkForUrls(panelId, opts.workspaceId, data) } catch { /* ignore */ }
+      if (outputShowsBodySpinner(data)) noteAgentSpinnerByte(ptyId)
     }
   })
   cleanupListeners.push(removeDataListener)
@@ -671,8 +695,10 @@ async function reconnectTerminal(
   const titleDisposable = terminal.onTitleChange((raw) => {
     const parsed = extractAgentTitleSegment(raw)
     if (!parsed) return
+    const running = titleIndicatesRunning(parsed)
     queueMicrotask(() => {
-      useAppStore.getState().updatePanelTitleFromAgent(opts.workspaceId, panelId, parsed)
+      noteAgentTitle(ptyId, running)
+      applyOscTitleIfNoAgent(ptyId, opts.workspaceId, panelId, parsed)
     })
   })
   cleanupListeners.push(() => titleDisposable.dispose())

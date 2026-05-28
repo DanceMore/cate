@@ -8,8 +8,6 @@ import codexLogo from '../assets/agentLogos/codex.svg?url'
 import antigravityLogo from '../assets/agentLogos/antigravity.svg?url'
 import cursorLogo from '../assets/agentLogos/cursor.svg?url'
 import opencodeLogo from '../assets/agentLogos/opencode.svg?url'
-import forgeLogo from '../assets/agentLogos/forgecode.svg?url'
-import geminiLogo from '../assets/agentLogos/gemini.png'
 import piLogo from '../assets/agentLogos/pi.svg?url'
 
 const LOGO_BY_DISPLAY_NAME: Record<string, string> = {
@@ -18,8 +16,6 @@ const LOGO_BY_DISPLAY_NAME: Record<string, string> = {
   'Antigravity': antigravityLogo,
   'Cursor': cursorLogo,
   'OpenCode': opencodeLogo,
-  'Forge Code': forgeLogo,
-  'Gemini CLI': geminiLogo,
   'PI Agent': piLogo,
 }
 

@@ -1,6 +1,6 @@
 // =============================================================================
 // Shell / Process Monitor IPC handlers
-// Walks process tree to detect agent CLIs (Claude, Aider, Codex, Gemini, etc.)
+// Walks process tree to detect agent CLIs (Claude, Codex, etc.)
 // =============================================================================
 
 import { execFile } from 'child_process'
@@ -14,8 +14,7 @@ import {
   SHELL_CWD_UPDATE,
   SHELL_AGENT_SCREEN_STATE,
 } from '../../shared/ipc-channels'
-import { getTotalPtyBytes, terminalPids } from './terminal'
-import { hasPidFirstSeen, recordPidFirstSeen, pruneStalePidAges, STARTUP_GRACE_MS } from './agentPidAge'
+import { terminalPids } from './terminal'
 import { sendToWindow, windowFromEvent, broadcastToAll } from '../windowRegistry'
 import { getShellEnv } from '../shellEnv'
 import type { TerminalActivity } from '../../shared/types'
@@ -35,24 +34,9 @@ interface PreviousState {
 interface ScanResult {
   terminalActivity: TerminalActivity
   agentName: string | null
-  subprocessActive: boolean
   agentPresent: boolean
   previouslyHadAgent: boolean
-  isStreaming: boolean
 }
-
-/** Bytes/s above which the agent counts as actively streaming. Tuned to
- *  pass model output and the thinking spinner while ignoring cursor blinks. */
-const STREAMING_BYTES_PER_INTERVAL = 200
-
-interface BytesSample {
-  total: number
-  sampledAt: number
-}
-
-/** Last sampled cumulative PTY byte count per terminal, used to compute a
- *  per-interval delta in `scanTerminal`. */
-const bytesSamples: Map<string, BytesSample> = new Map()
 
 // Concurrency limiter — caps simultaneous execFile calls across all terminals
 function createLimit(max: number) {
@@ -112,52 +96,6 @@ function getChildPids(pid: number): Promise<number[]> {
  * Get the process name (command basename) for a given PID.
  * Runs: ps -o comm= -p <pid>
  */
-/** Parse BSD `ps -o etime` output (`[[DD-]HH:]MM:SS`) to seconds. Returns
- *  null when the format isn't recognised. */
-function parseEtime(raw: string): number | null {
-  const s = raw.trim()
-  if (!s) return null
-  // optional days separated by `-`
-  let days = 0
-  let rest = s
-  const dashIdx = s.indexOf('-')
-  if (dashIdx >= 0) {
-    const d = parseInt(s.slice(0, dashIdx), 10)
-    if (!Number.isFinite(d)) return null
-    days = d
-    rest = s.slice(dashIdx + 1)
-  }
-  const parts = rest.split(':').map((p) => parseInt(p, 10))
-  if (parts.some((n) => !Number.isFinite(n))) return null
-  let h = 0, m = 0, sec = 0
-  if (parts.length === 3) [h, m, sec] = parts
-  else if (parts.length === 2) [m, sec] = parts
-  else return null
-  return days * 86_400 + h * 3_600 + m * 60 + sec
-}
-
-/** Wall-clock timestamp (ms) the process was started. Reads BSD `etime`
- *  (macOS) and falls through to it on Linux too (Linux ps supports it).
- *  Returns null on Windows or when the lookup fails — the caller should
- *  fall back to `Date.now()`. */
-function getProcessStartedAt(pid: number): Promise<number | null> {
-  if (!pid || pid <= 0) return Promise.resolve(null)
-  if (process.platform === 'win32') return Promise.resolve(null)
-  return limit(() => new Promise((resolve) => {
-    execFile('ps', ['-o', 'etime=', '-p', `${pid}`], {
-      encoding: 'utf-8',
-      timeout: 2000,
-    }, (err, stdout) => {
-      if (err || !stdout) { resolve(null); return }
-      const secs = parseEtime(stdout)
-      if (secs == null) { resolve(null); return }
-      resolve(Date.now() - secs * 1000)
-    })
-  }))
-}
-
-export { parseEtime as __parseEtimeForTests }
-
 function getProcessName(pid: number): Promise<string | null> {
   if (!pid || pid <= 0) return Promise.resolve(null)
   return limit(() => new Promise((resolve) => {
@@ -182,8 +120,7 @@ function getProcessName(pid: number): Promise<string | null> {
 }
 
 /** Full command line for a PID via `ps -o args=`. Used to identify agents
- *  that ship as `#!/usr/bin/env node` scripts (Gemini CLI, etc.) where
- *  `comm=` returns `node`. */
+ *  that ship as `#!/usr/bin/env node` scripts where `comm=` returns `node`. */
 function getProcessArgs(pid: number): Promise<string | null> {
   if (!pid || pid <= 0) return Promise.resolve(null)
   return limit(() => new Promise((resolve) => {
@@ -234,16 +171,11 @@ const AGENT_DEFINITIONS: { displayName: string; match: (name: string) => boolean
     match: (n) => n === 'codex',
   },
   {
-    // Successor to Gemini CLI.
+    // Antigravity's interactive terminal CLI installs as the `agy` binary —
+    // `antigravity` is the GUI IDE (runs as an Electron process), never a
+    // terminal child, so it would never match here.
     displayName: 'Antigravity',
-    match: (n) => n === 'antigravity',
-  },
-  {
-    // Deprecated in favor of Antigravity CLI:
-    // https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
-    // Kept for legacy installs.
-    displayName: 'Gemini CLI',
-    match: (n) => n === 'gemini',
+    match: (n) => n === 'agy',
   },
   {
     displayName: 'Cursor',
@@ -252,11 +184,6 @@ const AGENT_DEFINITIONS: { displayName: string; match: (name: string) => boolean
   {
     displayName: 'OpenCode',
     match: (n) => n === 'opencode',
-  },
-  {
-    // forgecode.dev — installs as the `forge` binary.
-    displayName: 'Forge Code',
-    match: (n) => n === 'forge' || n === 'forgecode',
   },
   {
     // @mariozechner/pi-coding-agent — installs as the `pi` binary.
@@ -284,82 +211,6 @@ function isShellProcess(name: string): boolean {
   const shells = ['zsh', 'bash', 'fish', 'sh', 'tcsh', 'ksh', 'dash']
   return shells.includes(name.toLowerCase())
 }
-
-/**
- * Agent helpers that linger between turns and must not be treated as work.
- * Claude Code keeps `caffeinate` and a persistent tool shell alive after the
- * first turn; counting them as "active" would pin the indicator to "running"
- * forever.
- */
-const IDLE_AGENT_HELPERS = new Set(['caffeinate', 'pmset'])
-
-/** MCP servers (`<name>-mcp`) and other long-lived helpers don't count as
- *  active tool execution. */
-function isAgentHelper(name: string): boolean {
-  if (IDLE_AGENT_HELPERS.has(name)) return true
-  if (name.endsWith('-mcp') || name.startsWith('mcp-')) return true
-  return false
-}
-
-/** Carries each terminal's last observed PIDs across a skipped/errored
- *  scan so `pruneStalePidAges` doesn't reset the first-seen entries for
- *  those processes on the next successful scan. */
-const lastSeenPidsByTerminal: Map<string, number[]> = new Map()
-
-/** When the current agent instance was first observed in each terminal —
- *  the reference point for the startup-grace helper window. */
-const agentFirstSeenAt: Map<string, number> = new Map()
-
-/** Returns the actual process start time on first sight (so reattach
- *  doesn't shift the anchor), or `now` if the lookup fails. */
-async function childFirstSeenAt(pid: number, now: number): Promise<number> {
-  if (hasPidFirstSeen(pid)) return recordPidFirstSeen(pid, now)
-  const started = await getProcessStartedAt(pid)
-  return recordPidFirstSeen(pid, started ?? now)
-}
-
-/** True iff this PID was started after the agent's startup-grace window
- *  ended — i.e. it's a tool, not a startup helper. */
-async function isPostStartupChild(pid: number, now: number, agentStartedAt: number): Promise<boolean> {
-  const firstSeen = await childFirstSeenAt(pid, now)
-  return firstSeen - agentStartedAt > STARTUP_GRACE_MS
-}
-
-/** True if the agent has a child it spawned for real work, not a startup
- *  helper. Startup helpers (MCP servers + their `bun`/`node` runtimes) all
- *  appear within `STARTUP_GRACE_MS` of the agent itself appearing; later
- *  children are tools regardless of how long they run silently. */
-async function agentIsActive(
-  agentPid: number,
-  terminalId: string,
-  seenThisCycle: Set<number>,
-): Promise<boolean> {
-  const children = await getChildPids(agentPid)
-  const now = Date.now()
-  const agentStartedAt = agentFirstSeenAt.get(terminalId) ?? now
-  let active = false
-  for (const childPid of children) {
-    seenThisCycle.add(childPid)
-    const name = await getProcessName(childPid)
-    if (!name) continue
-    const lower = name.toLowerCase()
-    if (isAgentHelper(lower)) continue
-    if (isShellProcess(lower)) {
-      // Shells only count as active when they have a post-startup subcommand
-      // running under them. A bare idle shell — even one spawned post-grace
-      // — isn't doing work.
-      const subchildren = await getChildPids(childPid)
-      for (const sub of subchildren) seenThisCycle.add(sub)
-      for (const sub of subchildren) {
-        if (await isPostStartupChild(sub, now, agentStartedAt)) { active = true; break }
-      }
-      continue
-    }
-    if (await isPostStartupChild(childPid, now, agentStartedAt)) active = true
-  }
-  return active
-}
-
 
 async function getAllDescendantPids(pid: number): Promise<number[]> {
   const children = await getChildPids(pid)
@@ -455,7 +306,6 @@ function getProcessCwd(pid: number): Promise<string | null> {
 async function scanTerminal(
   terminalId: string,
   info: TerminalRegistration,
-  seenThisCycle: Set<number>,
 ): Promise<ScanResult> {
   const prev = previousStates.get(terminalId) || {
     previousAgentName: null,
@@ -465,11 +315,9 @@ async function scanTerminal(
   const childrenToScan = await getChildPids(info.shellPid)
 
   let foundAgentName: string | null = null
-  let foundAgentPid: number | null = null
   let firstChildName: string | null = null
 
   for (const childPid of childrenToScan) {
-    seenThisCycle.add(childPid)
     const name = await getProcessName(childPid)
     if (name) {
       if (firstChildName === null && !isShellProcess(name)) {
@@ -478,7 +326,7 @@ async function scanTerminal(
       if (!foundAgentName) {
         let agentMatch = matchAgentProcess(name)
         // Node/bun/deno scripts: comm= returns the interpreter, so probe the
-        // arg vector for the script basename (gemini ships as `#!/usr/bin/env node`).
+        // arg vector for the script basename (node-script agents).
         if (!agentMatch && INTERPRETER_NAMES.has(name.toLowerCase())) {
           const args = await getProcessArgs(childPid)
           if (args) {
@@ -486,47 +334,12 @@ async function scanTerminal(
             if (script) agentMatch = matchAgentProcess(script)
           }
         }
-        if (agentMatch) {
-          foundAgentName = agentMatch
-          foundAgentPid = childPid
-        }
+        if (agentMatch) foundAgentName = agentMatch
       }
     }
   }
 
   const agentPresent = foundAgentName != null
-  // Anchor the startup-grace window to the agent process's actual start
-  // time so re-attaching to a long-running agent (cross-window reconnect,
-  // session restore) doesn't shift the window into the future and
-  // misclassify its already-running tools as helpers.
-  if (agentPresent && !prev.previouslyHadAgent) {
-    const startedAt = foundAgentPid != null ? await getProcessStartedAt(foundAgentPid) : null
-    agentFirstSeenAt.set(terminalId, startedAt ?? Date.now())
-  } else if (!agentPresent) {
-    agentFirstSeenAt.delete(terminalId)
-  }
-  const subprocessActive = foundAgentPid != null
-    ? await agentIsActive(foundAgentPid, terminalId, seenThisCycle)
-    : false
-
-  // Diff PTY bytes since last scan, normalised to 1s, against the streaming
-  // threshold. Filters out low-rate TUI redraws (cursor blink, status line).
-  const now = Date.now()
-  const totalBytes = getTotalPtyBytes(terminalId)
-  let isStreaming = false
-  if (agentPresent && totalBytes != null) {
-    const prev = bytesSamples.get(terminalId)
-    if (prev) {
-      const elapsed = Math.max(now - prev.sampledAt, 1)
-      const bytesPerInterval = (totalBytes - prev.total) * (1000 / elapsed)
-      isStreaming = bytesPerInterval >= STREAMING_BYTES_PER_INTERVAL
-    }
-    bytesSamples.set(terminalId, { total: totalBytes, sampledAt: now })
-  } else {
-    // Drop the baseline once the agent is gone so a restart doesn't diff
-    // against bytes accumulated while no agent was around.
-    bytesSamples.delete(terminalId)
-  }
 
   const terminalActivity: TerminalActivity =
     firstChildName != null
@@ -544,10 +357,8 @@ async function scanTerminal(
   return {
     terminalActivity,
     agentName,
-    subprocessActive,
     agentPresent,
     previouslyHadAgent,
-    isStreaming,
   }
 }
 
@@ -566,34 +377,21 @@ function startPolling(): void {
       // Scan all terminals concurrently
       const entries = Array.from(registeredTerminals.entries())
       if (entries.length === 0) return
-      const seenThisCycle = new Set<number>()
       const scanResults = await Promise.all(
         entries.map(async ([terminalId, info]) => {
           if (skipNextScan.has(terminalId)) {
             skipNextScan.delete(terminalId)
-            // Carry the last successful scan's PIDs forward so the prune
-            // below doesn't wipe their age entries.
-            for (const pid of lastSeenPidsByTerminal.get(terminalId) ?? []) {
-              seenThisCycle.add(pid)
-            }
             return null
           }
-          const localSeen = new Set<number>()
           try {
-            const result = await scanTerminal(terminalId, info, localSeen)
-            for (const pid of localSeen) seenThisCycle.add(pid)
-            lastSeenPidsByTerminal.set(terminalId, Array.from(localSeen))
+            const result = await scanTerminal(terminalId, info)
             return { terminalId, info, result }
           } catch (e) {
             skipNextScan.add(terminalId)
-            for (const pid of lastSeenPidsByTerminal.get(terminalId) ?? []) {
-              seenThisCycle.add(pid)
-            }
             return null
           }
         })
       )
-      pruneStalePidAges(seenThisCycle)
 
       for (const entry of scanResults) {
         if (!entry) continue
@@ -609,9 +407,7 @@ function startPolling(): void {
           terminalId,
           result.terminalActivity,
           result.agentName,
-          result.subprocessActive,
           result.agentPresent,
-          result.isStreaming,
         )
       }
 
@@ -672,9 +468,6 @@ export function unregisterTerminalsForWindow(windowId: number): void {
       registeredTerminals.delete(terminalId)
       previousStates.delete(terminalId)
       skipNextScan.delete(terminalId)
-      bytesSamples.delete(terminalId)
-      lastSeenPidsByTerminal.delete(terminalId)
-      agentFirstSeenAt.delete(terminalId)
     }
   }
   if (registeredTerminals.size === 0) {
@@ -726,9 +519,6 @@ export function registerHandlers(): void {
     registeredTerminals.delete(terminalId)
     previousStates.delete(terminalId)
     skipNextScan.delete(terminalId)
-    bytesSamples.delete(terminalId)
-    lastSeenPidsByTerminal.delete(terminalId)
-    agentFirstSeenAt.delete(terminalId)
     if (registeredTerminals.size === 0) {
       stopPolling()
     }

@@ -50,18 +50,12 @@ const terminalOwners: Map<string, number> = new Map()
 interface TerminalIdleState {
   /** Idle-suspend timer. Reset on resume — not a pure PTY-output timestamp. */
   lastOutputAt: number
-  /** Cumulative PTY bytes, only ever incremented in `onData`. shell.ts diffs
-   *  this against the previous sample for the streaming signal. */
-  totalPtyBytes: number
   visible: boolean
   suspended: boolean
 }
 
 const idleState: Map<string, TerminalIdleState> = new Map()
 
-export function getTotalPtyBytes(terminalId: string): number | undefined {
-  return idleState.get(terminalId)?.totalPtyBytes
-}
 const IDLE_SUSPEND_MS = 2 * 60_000
 const IDLE_CHECK_INTERVAL_MS = 20_000
 let idleScanner: ReturnType<typeof setInterval> | null = null
@@ -244,7 +238,7 @@ function createTerminal(
   terminals.set(id, ptyProcess)
   terminalPids.set(id, ptyProcess.pid)
   terminalOwners.set(id, ownerWindowId)
-  idleState.set(id, { lastOutputAt: Date.now(), totalPtyBytes: 0, visible: true, suspended: false })
+  idleState.set(id, { lastOutputAt: Date.now(), visible: true, suspended: false })
   ensureIdleScanner()
 
   // Surface fallback details inside the terminal — otherwise users only see
@@ -275,7 +269,6 @@ function createTerminal(
     const state = idleState.get(id)
     if (state) {
       state.lastOutputAt = Date.now()
-      state.totalPtyBytes += data.length
     }
     // Log to disk for session restore
     const logger = getOrCreateLogger(id)

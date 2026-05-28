@@ -235,9 +235,7 @@ export interface ElectronAPI {
       terminalId: string,
       activity: TerminalActivity,
       agentName: string | null,
-      subprocessActive: boolean,
       agentPresent: boolean,
-      isStreaming: boolean,
     ) => void,
   ): () => void
 
