@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react'
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react'
 import type { CanvasRegion } from '../../shared/types'
 import { useCanvasStoreContext, useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import type { NativeContextMenuItem } from '../../shared/electron-api'
@@ -51,6 +51,24 @@ const CanvasRegionComponent: React.FC<Props> = ({ region }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(region.label)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Memoize color parsing to avoid redundant regex matches on every render.
+  const parsedColor = useMemo(() => parseRgba(region.color), [region.color])
+
+  // Pre-calculate the background rgba string.
+  const backgroundColor = useMemo(() => {
+    const { r, g, b } = parsedColor
+    return `rgba(${r}, ${g}, ${b}, ${isDropTarget ? 0.42 : 0.3})`
+  }, [parsedColor, isDropTarget])
+
+  // Pre-calculate handle colors for the selection loop.
+  const handleColors = useMemo(() => {
+    const { r, g, b } = parsedColor
+    return {
+      normal: `rgba(${r}, ${g}, ${b}, 0.55)`,
+      hovered: `rgba(${r}, ${g}, ${b}, 0.95)`,
+    }
+  }, [parsedColor])
 
   // Focus input when editing
   useEffect(() => {
@@ -370,7 +388,7 @@ const CanvasRegionComponent: React.FC<Props> = ({ region }) => {
           top: region.origin.y,
           width: region.size.width,
           height: region.size.height,
-          background: `rgba(${parseRgba(region.color).r}, ${parseRgba(region.color).g}, ${parseRgba(region.color).b}, ${isDropTarget ? 0.42 : 0.3})`,
+          background: backgroundColor,
           borderRadius: 0,
           border: 'none',
           backdropFilter: 'blur(4px)',
@@ -450,8 +468,7 @@ const CanvasRegionComponent: React.FC<Props> = ({ region }) => {
         const isLeft = handle.includes('Left')
         const isTop = handle.includes('top') || handle === 'topLeft' || handle === 'topRight'
         const isHovered = hoveredHandle === handle
-        const alpha = isHovered ? 0.95 : 0.55
-        const color = `rgba(${parseRgba(region.color).r}, ${parseRgba(region.color).g}, ${parseRgba(region.color).b}, ${alpha})`
+        const color = isHovered ? handleColors.hovered : handleColors.normal
         return (
           <div
             key={handle}
