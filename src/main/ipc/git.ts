@@ -9,7 +9,8 @@ import { promisify } from 'util'
 import log from '../logger'
 import fs from 'fs/promises'
 import path from 'path'
-import { validateCwd, addAllowedRoot, removeAllowedRoot } from './pathValidation'
+import { validateCwd, addAllowedRoot, removeAllowedRoot, validatePathForCreation } from './pathValidation'
+import { windowFromEvent } from '../windowRegistry'
 import { getShellEnv } from '../shellEnv'
 import { ensureCateGitignore } from '../cateGitignore'
 import {
@@ -442,28 +443,30 @@ export function registerHandlers(): void {
   ipcMain.handle(
     GIT_WORKTREE_ADD,
     async (
-      _event,
+      event,
       repoCwd: string,
       branch: string,
       targetPath: string,
       options?: { createBranch?: boolean; baseRef?: string },
     ) => {
       try {
-        const validRepo = validateCwd(repoCwd)
+        const win = windowFromEvent(event)
+        const validRepo = validateCwd(repoCwd, win?.id)
+        const safeTargetPath = await validatePathForCreation(targetPath, win?.id)
         const git = simpleGit(validRepo)
-        await ensureContainingDir(targetPath)
+        await ensureContainingDir(safeTargetPath)
         const args = ['worktree', 'add']
         if (options?.createBranch) {
-          args.push('-b', branch, targetPath, options.baseRef ?? 'HEAD')
+          args.push('-b', branch, safeTargetPath, options.baseRef ?? 'HEAD')
         } else {
-          args.push(targetPath, branch)
+          args.push(safeTargetPath, branch)
         }
         await git.raw(args)
         // The worktree dir sits under .cate/, which isn't a tracked path the
         // workspace validator knows about — whitelist it so terminals/agents
         // can spawn with the worktree as cwd without tripping validateCwd.
-        addAllowedRoot(targetPath)
-        return { path: targetPath, branch }
+        addAllowedRoot(safeTargetPath)
+        return { path: safeTargetPath, branch }
       } catch (error) {
         log.error(`[${GIT_WORKTREE_ADD}]`, error)
         throw error instanceof Error ? error : new Error(String(error))
@@ -477,46 +480,50 @@ export function registerHandlers(): void {
   // commits can be pushed back to update the PR.
   ipcMain.handle(
     GIT_WORKTREE_ADD_FROM_PR,
-    async (_event, repoCwd: string, prNumber: number, targetPath: string) => {
-      const validRepo = validateCwd(repoCwd)
+    async (event, repoCwd: string, prNumber: number, targetPath: string) => {
+      const win = windowFromEvent(event)
+      const validRepo = validateCwd(repoCwd, win?.id)
+      const safeTargetPath = await validatePathForCreation(targetPath, win?.id)
       const git = simpleGit(validRepo)
       if (!(await ghAvailable(validRepo))) {
         throw new Error('GitHub CLI (gh) is required to check out pull requests.')
       }
-      await ensureContainingDir(targetPath)
-      await git.raw(['worktree', 'add', '--detach', targetPath])
-      addAllowedRoot(targetPath)
+      await ensureContainingDir(safeTargetPath)
+      await git.raw(['worktree', 'add', '--detach', safeTargetPath])
+      addAllowedRoot(safeTargetPath)
       try {
         await execFileP('gh', ['pr', 'checkout', String(prNumber)], {
-          cwd: targetPath,
+          cwd: safeTargetPath,
           timeout: 120000,
           env: getShellEnv(),
         })
       } catch (error) {
         // Roll back the half-created worktree so we never leave an orphan.
-        await git.raw(['worktree', 'remove', '--force', targetPath]).catch(() => {})
-        await fs.rm(targetPath, { recursive: true, force: true }).catch(() => {})
-        removeAllowedRoot(targetPath)
+        await git.raw(['worktree', 'remove', '--force', safeTargetPath]).catch(() => {})
+        await fs.rm(safeTargetPath, { recursive: true, force: true }).catch(() => {})
+        removeAllowedRoot(safeTargetPath)
         const msg = error instanceof Error ? error.message : String(error)
         throw new Error(`Could not check out PR #${prNumber}: ${msg}`)
       }
-      const branch = (await simpleGit(targetPath).raw(['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
-      return { path: targetPath, branch }
+      const branch = (await simpleGit(safeTargetPath).raw(['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
+      return { path: safeTargetPath, branch }
     },
   )
 
   ipcMain.handle(
     GIT_WORKTREE_REMOVE,
-    async (_event, repoCwd: string, worktreePath: string, options?: { force?: boolean }) => {
+    async (event, repoCwd: string, worktreePath: string, options?: { force?: boolean }) => {
       try {
-        const validRepo = validateCwd(repoCwd)
+        const win = windowFromEvent(event)
+        const validRepo = validateCwd(repoCwd, win?.id)
+        const validWorktreePath = validateCwd(worktreePath, win?.id)
         const git = simpleGit(validRepo)
         const args = ['worktree', 'remove']
         if (options?.force) args.push('--force')
-        args.push(worktreePath)
+        args.push(validWorktreePath)
         await git.raw(args)
-        await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {})
-        removeAllowedRoot(worktreePath)
+        await fs.rm(validWorktreePath, { recursive: true, force: true }).catch(() => {})
+        removeAllowedRoot(validWorktreePath)
       } catch (error) {
         log.error(`[${GIT_WORKTREE_REMOVE}]`, error)
         throw error instanceof Error ? error : new Error(String(error))
