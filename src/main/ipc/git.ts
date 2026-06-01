@@ -49,15 +49,32 @@ import {
 
 /**
  * Validate that filePath stays inside cwd and return its relative form.
- * Throws if filePath resolves outside the workspace root.
+ * Throws if filePath resolves outside the workspace root or via symlinks.
  */
-function validateFilePath(cwd: string, filePath: string): string {
-  const resolvedCwd = path.resolve(cwd)
-  const resolved = path.resolve(cwd, filePath)
-  if (resolved !== resolvedCwd && !resolved.startsWith(resolvedCwd + path.sep)) {
-    throw new Error('filePath escapes workspace')
+async function validateFilePath(cwd: string, filePath: string): Promise<string> {
+  const absoluteCwd = path.resolve(cwd)
+  const absoluteTarget = path.resolve(cwd, filePath)
+
+  let realCwd: string
+  let realTarget: string
+  try {
+    realCwd = await fs.realpath(absoluteCwd)
+    realTarget = await fs.realpath(absoluteTarget)
+  } catch (err) {
+    // If we can't resolve real paths (e.g. file doesn't exist), fall back to
+    // lexical check. This is less secure but allows operations on non-existent
+    // paths while still preventing basic traversal.
+    if (absoluteTarget !== absoluteCwd && !absoluteTarget.startsWith(absoluteCwd + path.sep)) {
+      throw new Error('filePath escapes workspace')
+    }
+    return path.relative(cwd, absoluteTarget)
   }
-  return path.relative(cwd, resolved)
+
+  if (realTarget !== realCwd && !realTarget.startsWith(realCwd + path.sep)) {
+    throw new Error('filePath escapes workspace (resolved via symlink)')
+  }
+
+  return path.relative(cwd, absoluteTarget)
 }
 
 /**
@@ -184,7 +201,7 @@ export function registerHandlers(): void {
       const validCwd = validateCwd(cwd)
       const git = simpleGit(validCwd)
       if (filePath) {
-        return await git.diff([validateFilePath(validCwd, filePath)])
+        return await git.diff([await validateFilePath(validCwd, filePath)])
       }
       return await git.diff()
     } catch (error) {
@@ -197,7 +214,7 @@ export function registerHandlers(): void {
     try {
       const validCwd = validateCwd(cwd)
       const git = simpleGit(validCwd)
-      await git.add(validateFilePath(validCwd, filePath))
+      await git.add(await validateFilePath(validCwd, filePath))
     } catch (error) {
       log.error(`[${GIT_STAGE}]`, error)
       throw error instanceof Error ? error : new Error(String(error))
@@ -208,7 +225,7 @@ export function registerHandlers(): void {
     try {
       const validCwd = validateCwd(cwd)
       const git = simpleGit(validCwd)
-      await git.reset([validateFilePath(validCwd, filePath)])
+      await git.reset([await validateFilePath(validCwd, filePath)])
     } catch (error) {
       log.error(`[${GIT_UNSTAGE}]`, error)
       throw error instanceof Error ? error : new Error(String(error))
@@ -343,7 +360,7 @@ export function registerHandlers(): void {
       const validCwd = validateCwd(cwd)
       const git = simpleGit(validCwd)
       if (filePath) {
-        return await git.diff(['--cached', validateFilePath(validCwd, filePath)])
+        return await git.diff(['--cached', await validateFilePath(validCwd, filePath)])
       }
       return await git.diff(['--cached'])
     } catch (error) {
@@ -380,7 +397,7 @@ export function registerHandlers(): void {
     try {
       const validCwd = validateCwd(cwd)
       const git = simpleGit(validCwd)
-      await git.checkout(['--', validateFilePath(validCwd, filePath)])
+      await git.checkout(['--', await validateFilePath(validCwd, filePath)])
     } catch (error) {
       log.error(`[${GIT_DISCARD_FILE}]`, error)
       throw error instanceof Error ? error : new Error(String(error))
