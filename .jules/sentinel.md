@@ -1,0 +1,4 @@
+## 2025-05-15 - Symlink Traversal in Path Validation
+**Vulnerability:** Path traversal via symlinks inside allowed roots. `isWithinAllowedRoots` performed a lexical check (`startsWith`) before resolving real paths, allowing a symlink like `/allowed/root/link -> /etc/passwd` to be treated as "within allowed roots" because its lexical path started with an allowed prefix.
+**Learning:** The validation logic used "OR" logic with short-circuiting on the cheaper lexical check. While lexical checks are useful for fast-failing obviously bad paths, they are insufficient for confirming a path is physically contained within a boundary if symlinks are involved.
+**Prevention:** Always resolve the physical (`realpath`) of a candidate path before boundary validation if the target exists. For creation targets that don't exist yet, resolve the parent directory's real path. Ensure real-path validation is the primary source of truth and cannot be bypassed by lexical matches.
