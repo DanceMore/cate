@@ -11,7 +11,7 @@
 // =============================================================================
 
 import React, { useRef, useEffect } from 'react'
-import { useCanvasStoreContext, useCanvasStoreApi } from '../stores/CanvasStoreContext'
+import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { useSettingsStore } from '../stores/settingsStore'
 import { CANVAS_GRID_SIZE } from './layoutEngine'
 
@@ -22,41 +22,44 @@ interface CanvasGridProps {
 
 const BASE_SPACING = CANVAS_GRID_SIZE
 
+function calculateGridStep(zoom: number): number {
+  const MIN_SCREEN_STEP = 16
+  let canvasStep = BASE_SPACING
+  while (canvasStep * zoom < MIN_SCREEN_STEP) canvasStep *= 2
+  return canvasStep * zoom
+}
+
 const CanvasGrid: React.FC<CanvasGridProps> = ({
   containerWidth,
   containerHeight,
 }) => {
-  const zoom = useCanvasStoreContext((s) => s.zoomLevel)
   const canvasApi = useCanvasStoreApi()
   const style = useSettingsStore((s) => s.canvasGridStyle)
 
   const divRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const apply = (offsetX: number, offsetY: number) => {
+    const apply = (zoom: number, offsetX: number, offsetY: number) => {
       const el = divRef.current
       if (!el) return
       el.style.backgroundPosition = `${offsetX}px ${offsetY}px`
+      el.style.backgroundSize = `${calculateGridStep(zoom)}px ${calculateGridStep(zoom)}px`
     }
-    const { viewportOffset } = canvasApi.getState()
-    apply(viewportOffset.x, viewportOffset.y)
+    const { zoomLevel, viewportOffset } = canvasApi.getState()
+    apply(zoomLevel, viewportOffset.x, viewportOffset.y)
+
     const unsubscribe = canvasApi.subscribe((state, prev) => {
-      if (state.viewportOffset !== prev.viewportOffset) {
-        apply(state.viewportOffset.x, state.viewportOffset.y)
+      if (state.viewportOffset !== prev.viewportOffset || state.zoomLevel !== prev.zoomLevel) {
+        apply(state.zoomLevel, state.viewportOffset.x, state.viewportOffset.y)
       }
     })
     return unsubscribe
-  }, [canvasApi, zoom])
+  }, [canvasApi])
 
   if (style === 'none') return null
 
-  // LOD: when zoomed out, the on-screen step would get too small. Double the
-  // canvas-space spacing until the screen step is comfortably readable.
-  const MIN_SCREEN_STEP = 16
-  let canvasStep = BASE_SPACING
-  while (canvasStep * zoom < MIN_SCREEN_STEP) canvasStep *= 2
-  const step = canvasStep * zoom
-  const initialOffset = canvasApi.getState().viewportOffset
+  const { zoomLevel: initialZoom, viewportOffset: initialOffset } = canvasApi.getState()
+  const step = calculateGridStep(initialZoom)
 
   const backgroundImage =
     style === 'lines'

@@ -213,7 +213,6 @@ export default function CanvasPanel({ panelId, workspaceId, nodeId, renderPanelC
     setActiveCanvasPanelId(panelId)
   }, [panelId])
 
-  const zoomLevel = useStore(store, (s) => s.zoomLevel)
   // `nodeIds` is the full ordered list (used where we need to know about every
   // node regardless of visibility — e.g. the "canvas empty" welcome page).
   // `visibleNodeIds` is viewport-culled: we only mount CanvasNodeWrapper for
@@ -255,12 +254,14 @@ export default function CanvasPanel({ panelId, workspaceId, nodeId, renderPanelC
   }, [workspaceId])
 
   const onZoomIn = useCallback(() => {
-    store.getState().animateZoomTo(zoomLevel + 0.1)
-  }, [zoomLevel, store])
+    const currentZoom = store.getState().zoomLevel
+    store.getState().animateZoomTo(currentZoom + 0.1)
+  }, [store])
 
   const onZoomOut = useCallback(() => {
-    store.getState().animateZoomTo(zoomLevel - 0.1)
-  }, [zoomLevel, store])
+    const currentZoom = store.getState().zoomLevel
+    store.getState().animateZoomTo(currentZoom - 0.1)
+  }, [store])
 
   const onZoomToFit = useCallback(() => {
     store.getState().zoomToFit()
@@ -323,7 +324,6 @@ export default function CanvasPanel({ panelId, workspaceId, nodeId, renderPanelC
 
         {(nodeIds.length > 0 || workspaceRootPath) && (
           <CanvasToolbar
-            zoom={zoomLevel}
             onNewTerminal={onNewTerminal}
             onNewBrowser={onNewBrowser}
             onNewEditor={onNewEditor}

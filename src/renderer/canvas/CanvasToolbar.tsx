@@ -21,7 +21,7 @@ import {
 } from '@phosphor-icons/react'
 import { CateLogo } from '../ui/CateLogo'
 import Minimap from './Minimap'
-import { useCanvasStoreApi } from '../stores/CanvasStoreContext'
+import { useCanvasStoreContext, useCanvasStoreApi } from '../stores/CanvasStoreContext'
 import { useUIStore } from '../stores/uiStore'
 import { useShortcutStore } from '../stores/shortcutStore'
 import { displayString } from '../../shared/types'
@@ -42,7 +42,6 @@ const loadMinimapCorner = (): MinimapCorner => {
 }
 
 interface CanvasToolbarProps {
-  zoom: number
   onNewTerminal: () => void
   onNewBrowser: () => void
   onNewEditor: () => void
@@ -122,7 +121,6 @@ const MenuItem: React.FC<{
 )
 
 const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
-  zoom,
   onNewTerminal,
   onNewBrowser,
   onNewEditor,
@@ -141,6 +139,7 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   const setActiveTool = useUIStore((s) => s.setActiveTool)
   const selectKey = useShortcutStore((s) => displayString(s.shortcuts.toolSelect))
   const handKey = useShortcutStore((s) => displayString(s.shortcuts.toolHand))
+  const zoom = useCanvasStoreContext((s) => s.zoomLevel)
   const zoomText = `${Math.round(zoom * 100)}%`
 
   const [menuOpen, setMenuOpen] = useState(false)
