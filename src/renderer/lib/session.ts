@@ -124,6 +124,7 @@ function buildWorkspaceFile(
     title: n.title,
     origin: n.origin,
     size: n.size,
+    zOrder: n.zOrder,
     filePath: n.filePath ? toRelativePath(n.filePath, rootPath) : undefined,
     url: n.url ?? undefined,
     regionId: n.regionId,
@@ -235,6 +236,7 @@ export async function saveSession(): Promise<void> {
         title: panel?.title ?? '',
         origin: node.origin,
         size: node.size,
+        zOrder: node.zOrder,
         filePath: panel?.filePath ?? undefined,
         url: panel?.url ?? undefined,
         regionId: node.regionId ?? undefined,
@@ -426,6 +428,7 @@ export function projectFilesToSnapshot(
       title: pn.title,
       origin: pn.origin,
       size: pn.size,
+      zOrder: pn.zOrder,
       filePath: pn.filePath ? toAbsolutePath(pn.filePath, rootPath) : undefined,
       url: pn.url,
       regionId: pn.regionId,
@@ -614,6 +617,10 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
     }
   }
 
+  // Collect saved z-orders during the loop; applied in a single pass after so
+  // we can also bump nextZOrder to max+1 without repeated store reads.
+  const pendingZOrders: Array<{ nodeId: string; zOrder: number }> = []
+
   for (let i = 0; i < snapshot.nodes.length; i++) {
     const nodeSnap = snapshot.nodes[i]
     log.debug(`[session] restoring node ${i + 1}/${snapshot.nodes.length}: ${nodeSnap.panelType} (panelId=${nodeSnap.panelId})`)
@@ -642,6 +649,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -662,6 +670,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -681,6 +690,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -698,6 +708,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -715,10 +726,25 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
       }
+    }
+  }
+
+  // Apply saved z-orders and advance nextZOrder past all restored values so new
+  // nodes don't collide with the restored stacking order.
+  if (pendingZOrders.length > 0) {
+    const cs = getCanvasState()
+    if (cs) {
+      let maxZ = -1
+      for (const { nodeId, zOrder } of pendingZOrders) {
+        cs.setNodeZOrder(nodeId, zOrder)
+        if (zOrder > maxZ) maxZ = zOrder
+      }
+      cs.bumpNextZOrder(maxZ + 1)
     }
   }
 

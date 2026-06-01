@@ -90,6 +90,8 @@ export interface CanvasStoreActions {
   setNodeAnimationState: (nodeId: CanvasNodeId, state: 'entering' | 'exiting' | 'idle') => void
   moveNode: (id: CanvasNodeId, origin: Point) => void
   resizeNode: (id: CanvasNodeId, size: Size, origin?: Point) => void
+  setNodeZOrder: (id: CanvasNodeId, zOrder: number) => void
+  bumpNextZOrder: (minimum: number) => void
   focusNode: (id: CanvasNodeId) => void
   unfocus: () => void
   toggleMaximize: (id: CanvasNodeId, viewportSize: Size) => void
@@ -508,6 +510,20 @@ export function createCanvasStore(): UseBoundStore<StoreApi<CanvasStore>> {
         },
       }
     })
+  },
+
+  setNodeZOrder(id, zOrder) {
+    set((state) => {
+      const node = state.nodes[id]
+      if (!node) return state
+      return { nodes: { ...state.nodes, [id]: { ...node, zOrder } } }
+    })
+  },
+
+  bumpNextZOrder(minimum) {
+    set((state) => ({
+      nextZOrder: Math.max(state.nextZOrder, minimum),
+    }))
   },
 
   focusNode(id) {

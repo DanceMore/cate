@@ -616,6 +616,9 @@ export interface NodeSnapshot {
   unsavedContent?: string
   /** Document panels only: sub-type discriminator for the viewer. */
   documentType?: 'pdf' | 'docx' | 'image'
+  /** Stacking order — higher = rendered on top. Restored so user-established
+   *  overlap order survives a restart. */
+  zOrder?: number
 }
 
 export interface SessionSnapshot {
@@ -697,6 +700,7 @@ export interface ProjectCanvasNode {
   regionId?: string
   documentType?: 'pdf' | 'docx' | 'image'
   dockLayout?: DockLayoutNode | null
+  zOrder?: number
 }
 
 export interface ProjectCanvasRegion {
