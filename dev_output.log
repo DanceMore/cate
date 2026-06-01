@@ -1,0 +1,100 @@
+
+> cate@1.1.0 predev
+> bash scripts/patch-electron-name.sh
+
+
+> cate@1.1.0 dev
+> electron-vite dev
+
+vite v7.3.2 building ssr environment for development...
+transforming...
+✓ 5056 modules transformed.
+rendering chunks...
+[plugin vite:reporter]
+(!) /app/src/main/ipc/terminalLogger.ts is dynamically imported by /app/src/main/ipc/terminal.ts, /app/src/main/ipc/terminal.ts but also statically imported by /app/src/main/ipc/terminal.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /app/src/main/ipc/filesystem.ts is dynamically imported by /app/src/main/store.ts but also statically imported by /app/src/main/index.ts, /app/src/main/ipc/git-monitor.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /app/src/main/sentry.ts is dynamically imported by /app/src/main/store.ts but also statically imported by /app/src/main/index.ts, dynamic import will not move module into another chunk.
+
+dist/main/chunks/sanitize-unicode-DP0y8cmA.js                                                     0.20 kB
+dist/main/chunks/sanitize-unicode-Y0XM2Jqn.js                                                     0.20 kB
+dist/main/chunks/headers-CrLEOpbE.js                                                              0.21 kB
+dist/main/chunks/headers-Cfx4D-fb.js                                                              0.21 kB
+dist/main/chunks/openai-prompt-cache-fUNu9h_M.js                                                  0.39 kB
+dist/main/chunks/openai-prompt-cache-BCARsOZr.js                                                  0.39 kB
+dist/main/chunks/hash-CF2DclNF.js                                                                 0.51 kB
+dist/main/chunks/hash-DS0i-9wE.js                                                                 0.51 kB
+dist/main/chunks/___vite-optional-peer-dep_utf-8-validate_ws_true_commonjs-proxy-DKJgp9Wy.js      1.10 kB
+dist/main/chunks/github-copilot-headers-BqeTokn3.js                                               1.55 kB
+dist/main/chunks/github-copilot-headers-BMZaq5y1.js                                               1.55 kB
+dist/main/chunks/json-parse-BQSLDag_.js                                                           2.50 kB
+dist/main/chunks/json-parse-BHo9SupJ.js                                                           2.51 kB
+dist/main/chunks/index-BXWEbCcd.js                                                                3.63 kB
+dist/main/chunks/openrouter-CeIGSgNo.js                                                           5.88 kB
+dist/main/chunks/openrouter-B3d7kb7L.js                                                           5.89 kB
+dist/main/chunks/transform-messages-BRm_LnKn.js                                                   6.51 kB
+dist/main/chunks/transform-messages-gDPYz5V-.js                                                   6.51 kB
+dist/main/chunks/openai-responses-bVLFtnxI.js                                                    10.00 kB
+dist/main/chunks/openai-responses-D9NBuGG2.js                                                    10.01 kB
+dist/main/chunks/multipart-parser-CIy7H8W1.js                                                    11.54 kB
+dist/main/chunks/multipart-parser-BHpBAegh.js                                                    11.54 kB
+dist/main/chunks/azure-openai-responses-8Hz1E7kr.js                                              14.33 kB
+dist/main/chunks/azure-openai-responses-BMgrMkty.js                                              14.34 kB
+dist/main/chunks/google-DxX_Atcm.js                                                              14.82 kB
+dist/main/chunks/google-ch2jcEIr.js                                                              14.83 kB
+dist/main/chunks/google-vertex-DUDZ4HbK.js                                                       16.64 kB
+dist/main/chunks/google-vertex-CVp3nVR4.js                                                       16.65 kB
+dist/main/chunks/openai-responses-shared-BjhjwFCh.js                                             17.02 kB
+dist/main/chunks/openai-responses-shared-CF44m54V.js                                             17.02 kB
+dist/main/chunks/openai-completions-N64mD19d.js                                                  34.22 kB
+dist/main/chunks/openai-completions-CBKebLgg.js                                                  34.23 kB
+dist/main/chunks/index-oYlsU5wA.js                                                               36.21 kB
+dist/main/chunks/index-C8w4N-yw.js                                                               36.21 kB
+dist/main/chunks/openai-codex-responses-t94zMKpq.js                                              38.08 kB
+dist/main/chunks/openai-codex-responses-CRbiOwRr.js                                              38.08 kB
+dist/main/chunks/index-C5NAeWKQ.js                                                              242.21 kB
+dist/main/chunks/index-CIq_SkvQ.js                                                              242.21 kB
+dist/main/chunks/anthropic-BMVRk19x.js                                                          244.94 kB
+dist/main/chunks/anthropic-CWYPmtuf.js                                                          245.17 kB
+dist/main/chunks/client-BVM1u-gP.js                                                             245.40 kB
+dist/main/chunks/client-CMrbGSmL.js                                                             245.40 kB
+dist/main/chunks/mistral-Buu1gjm7.js                                                          1,046.54 kB
+dist/main/chunks/mistral-C_BNrFlp.js                                                          1,073.40 kB
+dist/main/chunks/google-shared-BDCInY5i.js                                                    1,231.34 kB
+dist/main/chunks/google-shared-BEw7ldse.js                                                    1,231.34 kB
+dist/main/index.js                                                                            6,896.60 kB
+✓ built in 31.43s
+
+electron main process built successfully
+
+-----
+
+vite v7.3.2 building ssr environment for development...
+transforming...
+✓ 2 modules transformed.
+rendering chunks...
+dist/preload/index.js  40.95 kB
+✓ built in 66ms
+
+electron preload scripts built successfully
+
+-----
+
+dev server running for the electron renderer process at:
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+
+starting electron app...
+
+19:58:26.999 › Cate v1.1.0 starting (electron 41.2.0, node 24.14.0, platform linux)
+19:58:27.005 › [sentry] DSN not configured; skipping init
+(node:132413) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `electron --trace-warnings ...` to show where the warning was created)
+[132413:0601/195834.766256:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+19:58:34.839 › [perf] app.whenReady t=9497ms
+19:58:34.840 › App ready, resolving shell environment...
+19:58:34.848 › Resolving shell environment from /bin/bash
