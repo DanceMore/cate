@@ -24,18 +24,18 @@ const AWAIT_COLOR = '#c08a5a'
 // color is applied to the tab's title text, not its icon — the icon may be an
 // agent logo (an <img>, which ignores `color`), and tinting it would clash
 // with the per-agent icon swap.
-function useWorktreeColorByPanel(): Record<string, string> {
+function useWorktreeColorByPanel(workspaceId: string | undefined): Record<string, string> {
   return useAppStore(useShallow((s) => {
     const out: Record<string, string> = {}
-    for (const ws of s.workspaces) {
-      const worktrees = ws.worktrees ?? []
-      if (worktrees.length < 2) continue
-      const primary = worktrees.find((w) => w.isPrimary)
-      for (const panel of Object.values(ws.panels)) {
-        if (panel.type !== 'terminal' && panel.type !== 'agent') continue
-        const wt = worktrees.find((w) => w.id === panel.worktreeId) ?? primary
-        if (wt?.color) out[panel.id] = wt.color
-      }
+    const ws = s.workspaces.find((w) => w.id === workspaceId)
+    if (!ws) return out
+    const worktrees = ws.worktrees ?? []
+    if (worktrees.length < 2) return out
+    const primary = worktrees.find((w) => w.isPrimary)
+    for (const panel of Object.values(ws.panels)) {
+      if (panel.type !== 'terminal' && panel.type !== 'agent') continue
+      const wt = worktrees.find((w) => w.id === panel.worktreeId) ?? primary
+      if (wt?.color) out[panel.id] = wt.color
     }
     return out
   }))
@@ -47,7 +47,7 @@ export const PANEL_TYPE_TINT: Record<PanelType, string> = Object.fromEntries(
   (Object.keys(PANEL_REGISTRY) as PanelType[]).map((t) => [t, PANEL_REGISTRY[t].tintClass]),
 ) as Record<PanelType, string>
 
-export function TabIcon({ type, size, logo, agentName }: { type: PanelType; size: number; logo?: string | null; agentName?: string | null }) {
+export const TabIcon = React.memo(function TabIcon({ type, size, logo, agentName }: { type: PanelType; size: number; logo?: string | null; agentName?: string | null }) {
   // Terminal panels with a detected agent CLI swap the generic Terminal
   // icon for the agent's logo. Fallback path stays Phosphor.
   const useLogo = type === 'terminal' ? logo : null
@@ -70,11 +70,11 @@ export function TabIcon({ type, size, logo, agentName }: { type: PanelType; size
   }
   const Icon = getPanelDef(type).icon
   return <Icon size={size} />
-}
+})
 
 /** Thin wrapper around the tab-pill DOM that calls useTabSourceVisibility(panelId)
  *  in its own component scope. */
-export const TabPill = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & {
+export const TabPill = React.memo(React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & {
   panelId: string
   baseStyle: React.CSSProperties
 }>(function TabPill({ panelId, baseStyle, style, children, ...rest }, ref) {
@@ -87,7 +87,7 @@ export const TabPill = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTM
       {children}
     </div>
   )
-})
+}))
 
 export interface DockTabBarProps {
   stack: DockTabStackType
@@ -133,7 +133,7 @@ export function DockTabBar(props: DockTabBarProps) {
     showTabPlaceholder, selfTabDrag, onTabBarMouseDown,
   } = props
 
-  const worktreeColorByPanel = useWorktreeColorByPanel()
+  const worktreeColorByPanel = useWorktreeColorByPanel(workspaceId)
   const agentInfoByPanel = useAgentInfoByPanel(workspaceId)
 
   // Build the visible tab list (skip the in-flight tab when source === this

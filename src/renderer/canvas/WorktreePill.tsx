@@ -18,7 +18,7 @@ interface WorktreePillProps {
   workspaceId: string
 }
 
-export const WorktreePill: React.FC<WorktreePillProps> = ({ panel, workspaceId }) => {
+export const WorktreePill: React.FC<WorktreePillProps> = React.memo(({ panel, workspaceId }) => {
   const worktrees = useAppStore(useShallow((s) => s.workspaces.find((w) => w.id === workspaceId)?.worktrees ?? []))
   const setPanelWorktreeId = useAppStore((s) => s.setPanelWorktreeId)
 
@@ -93,4 +93,4 @@ export const WorktreePill: React.FC<WorktreePillProps> = ({ panel, workspaceId }
       </span>
     </button>
   )
-}
+})
