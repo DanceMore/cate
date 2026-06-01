@@ -4,6 +4,7 @@
 // =============================================================================
 
 import fs from 'fs/promises'
+import { realpathSync } from 'fs'
 import path from 'path'
 import os from 'os'
 
@@ -36,13 +37,32 @@ export function getAllowedRoots(): ReadonlySet<string> {
 
 function isWithinAllowedRoots(normalized: string): boolean {
   const tmpDir = path.resolve(os.tmpdir())
-  if (normalized === tmpDir || normalized.startsWith(tmpDir + path.sep)) {
-    return true
+  const roots = [tmpDir, ...allowedRoots]
+
+  const isUnder = (child: string, parent: string) =>
+    child === parent || child.startsWith(parent + path.sep)
+
+  let realCandidate: string | null = null
+  try {
+    realCandidate = realpathSync(normalized)
+  } catch {
+    // Doesn't exist yet
   }
 
-  for (const root of allowedRoots) {
-    if (normalized.startsWith(root + path.sep) || normalized === root) {
-      return true
+  for (const root of roots) {
+    let realRoot: string
+    try {
+      realRoot = realpathSync(root)
+    } catch {
+      realRoot = root
+    }
+
+    if (realCandidate) {
+      // If the candidate exists, it MUST be physically under the resolved root.
+      if (isUnder(realCandidate, realRoot)) return true
+    } else {
+      // If it doesn't exist, we fallback to lexical checks against both forms of the root.
+      if (isUnder(normalized, root) || isUnder(normalized, realRoot)) return true
     }
   }
 
@@ -144,10 +164,13 @@ export function validatePath(filePath: string, ownerWindowId?: number): string {
   }
 
   const normalized = path.resolve(filePath)
-  if (isWithinAllowedRoots(normalized)) {
+
+  // A persistent per-window grant on the lexical form satisfies the check.
+  if (hasGrantedFile(ownerWindowId, normalized)) {
     return normalized
   }
-  if (hasGrantedFile(ownerWindowId, normalized)) {
+
+  if (isWithinAllowedRoots(normalized)) {
     return normalized
   }
 
@@ -193,9 +216,8 @@ export async function validatePathStrict(filePath: string, ownerWindowId?: numbe
  * Returns the safe absolute path (`realParent + baseName`).
  */
 export async function validatePathForCreation(filePath: string, ownerWindowId?: number): Promise<string> {
-  const normalized = path.resolve(filePath)
   const safeTarget = await normalizeCreationTarget(filePath)
-  if (isWithinAllowedRoots(normalized) || isWithinAllowedRoots(safeTarget)) {
+  if (isWithinAllowedRoots(safeTarget)) {
     return safeTarget
   }
   if (hasGrantedFile(ownerWindowId, safeTarget)) {
