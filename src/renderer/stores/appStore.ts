@@ -986,6 +986,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         if (shouldPreserveExistingCanvas(
           Object.keys(canvasState.nodes).length,
           Object.keys(ws.canvasNodes ?? {}).length,
+          Object.keys(canvasState.regions).length,
+          Object.keys(ws.regions ?? {}).length,
         )) {
           // Keep nodes/regions/viewport intact; only refresh dock state.
           return { ...ws, dockState: dockSnapshot }

@@ -11,15 +11,19 @@ describe('shouldPreserveExistingCanvas', () => {
     expect(shouldPreserveExistingCanvas(0, 3)).toBe(true)
   })
 
+  it('preserves persisted regions when the live store is empty', () => {
+    expect(shouldPreserveExistingCanvas(0, 0, 0, 2)).toBe(true)
+  })
+
   it('lets a populated live store write through (normal case)', () => {
-    expect(shouldPreserveExistingCanvas(5, 3)).toBe(false)
+    expect(shouldPreserveExistingCanvas(5, 3, 1, 1)).toBe(false)
   })
 
   it('lets an empty live store overwrite an empty workspace (no data loss to prevent)', () => {
-    expect(shouldPreserveExistingCanvas(0, 0)).toBe(false)
+    expect(shouldPreserveExistingCanvas(0, 0, 0, 0)).toBe(false)
   })
 
   it('lets a populated live store overwrite an empty workspace (first save)', () => {
-    expect(shouldPreserveExistingCanvas(2, 0)).toBe(false)
+    expect(shouldPreserveExistingCanvas(2, 0, 1, 0)).toBe(false)
   })
 })

@@ -28,12 +28,12 @@ function makeNode(panelId: string): ProjectCanvasNode {
   }
 }
 
-function makeWorkspace(nodes: ProjectCanvasNode[]): ProjectWorkspaceFile {
+function makeWorkspace(nodes: ProjectCanvasNode[], regions: any[] = []): ProjectWorkspaceFile {
   return {
     version: 1,
     name: 'WS',
     color: '',
-    canvas: { nodes, regions: [], zoomLevel: 1, viewportOffset: { x: 0, y: 0 } },
+    canvas: { nodes, regions, zoomLevel: 1, viewportOffset: { x: 0, y: 0 } },
   }
 }
 
@@ -61,6 +61,13 @@ describe('saveProjectState — issue #220 empty-overwrite guard', () => {
     await saveProjectState(root, makeWorkspace([makeNode('a'), makeNode('b')]), makeSession())
     const onDisk = await readWorkspaceJson(root)
     expect(onDisk.canvas.nodes).toHaveLength(2)
+  })
+
+  it('refuses to overwrite a non-empty canvas (regions only) with an empty one', async () => {
+    await saveProjectState(root, makeWorkspace([], [{ id: 'r1' } as any]), makeSession())
+    await saveProjectState(root, makeWorkspace([]), makeSession())
+    const onDisk = await readWorkspaceJson(root)
+    expect(onDisk.canvas.regions).toHaveLength(1)
   })
 
   it('refuses to overwrite a non-empty canvas with an empty one', async () => {

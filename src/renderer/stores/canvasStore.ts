@@ -90,6 +90,8 @@ export interface CanvasStoreActions {
   setNodeAnimationState: (nodeId: CanvasNodeId, state: 'entering' | 'exiting' | 'idle') => void
   moveNode: (id: CanvasNodeId, origin: Point) => void
   resizeNode: (id: CanvasNodeId, size: Size, origin?: Point) => void
+  setNodeZOrder: (id: CanvasNodeId, zOrder: number) => void
+  bumpNextZOrder: (minimum: number) => void
   focusNode: (id: CanvasNodeId) => void
   unfocus: () => void
   toggleMaximize: (id: CanvasNodeId, viewportSize: Size) => void
@@ -145,7 +147,15 @@ export interface CanvasStoreActions {
   deleteSelection: (includeRegionContents?: boolean) => void
 
   // Region management
-  addRegion: (label: string, origin: Point, size: Size, color?: string) => string
+  addRegion: (
+    label: string,
+    origin: Point,
+    size: Size,
+    color?: string,
+    id?: string,
+    zOrder?: number,
+    defaultCwd?: string,
+  ) => string
   removeRegion: (id: string) => void
   moveRegion: (id: string, origin: Point) => void
   resizeRegion: (id: string, size: Size, origin?: Point) => void
@@ -500,6 +510,20 @@ export function createCanvasStore(): UseBoundStore<StoreApi<CanvasStore>> {
         },
       }
     })
+  },
+
+  setNodeZOrder(id, zOrder) {
+    set((state) => {
+      const node = state.nodes[id]
+      if (!node) return state
+      return { nodes: { ...state.nodes, [id]: { ...node, zOrder } } }
+    })
+  },
+
+  bumpNextZOrder(minimum) {
+    set((state) => ({
+      nextZOrder: Math.max(state.nextZOrder, minimum),
+    }))
   },
 
   focusNode(id) {
@@ -1105,20 +1129,21 @@ export function createCanvasStore(): UseBoundStore<StoreApi<CanvasStore>> {
     get().zoomToFit()
   },
 
-  addRegion(label, origin, size, color) {
-    const id = generateId()
+  addRegion(label, origin, size, color, id, zOrder, defaultCwd) {
+    const regionId = id || generateId()
     const region: CanvasRegion = {
-      id,
+      id: regionId,
       origin,
       size,
       label,
       color: color || REGION_FILL_COLORS[0],
-      zOrder: -1000,
+      zOrder: zOrder ?? -1000,
+      defaultCwd,
     }
     set((state) => ({
-      regions: { ...state.regions, [id]: region },
+      regions: { ...state.regions, [regionId]: region },
     }))
-    return id
+    return regionId
   },
 
   removeRegion(id) {

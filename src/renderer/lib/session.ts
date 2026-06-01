@@ -124,10 +124,12 @@ function buildWorkspaceFile(
     title: n.title,
     origin: n.origin,
     size: n.size,
+    zOrder: n.zOrder,
     filePath: n.filePath ? toRelativePath(n.filePath, rootPath) : undefined,
     url: n.url ?? undefined,
     regionId: n.regionId,
     documentType: n.documentType,
+    dockLayout: n.dockLayout,
   }))
 
   const regions: ProjectCanvasRegion[] = snapshot.regions
@@ -138,6 +140,7 @@ function buildWorkspaceFile(
         label: r.label,
         color: r.color,
         zOrder: r.zOrder,
+        defaultCwd: r.defaultCwd,
       }))
     : []
 
@@ -233,9 +236,11 @@ export async function saveSession(): Promise<void> {
         title: panel?.title ?? '',
         origin: node.origin,
         size: node.size,
+        zOrder: node.zOrder,
         filePath: panel?.filePath ?? undefined,
         url: panel?.url ?? undefined,
         regionId: node.regionId ?? undefined,
+        dockLayout: node.dockLayout,
         unsavedContent: panel?.type === 'editor' && !panel?.filePath
           ? panel?.unsavedContent
           : undefined,
@@ -423,10 +428,12 @@ export function projectFilesToSnapshot(
       title: pn.title,
       origin: pn.origin,
       size: pn.size,
+      zOrder: pn.zOrder,
       filePath: pn.filePath ? toAbsolutePath(pn.filePath, rootPath) : undefined,
       url: pn.url,
       regionId: pn.regionId,
       documentType: pn.documentType,
+      dockLayout: pn.dockLayout,
       ptyId: ephemeral?.ptyId,
       workingDirectory: ephemeral?.workingDirectory,
       unsavedContent: ephemeral?.unsavedContent,
@@ -442,6 +449,7 @@ export function projectFilesToSnapshot(
       label: r.label,
       color: r.color,
       zOrder: r.zOrder,
+      defaultCwd: r.defaultCwd,
     }
   }
 
@@ -596,10 +604,22 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
   const cs = getCanvasState()
   if (snapshot.regions && cs) {
     for (const region of Object.values(snapshot.regions)) {
-      const newId = cs.addRegion(region.label, region.origin, region.size, region.color)
+      const newId = cs.addRegion(
+        region.label,
+        region.origin,
+        region.size,
+        region.color,
+        region.id,
+        region.zOrder,
+        region.defaultCwd,
+      )
       regionIdMap.set(region.id, newId)
     }
   }
+
+  // Collect saved z-orders during the loop; applied in a single pass after so
+  // we can also bump nextZOrder to max+1 without repeated store reads.
+  const pendingZOrders: Array<{ nodeId: string; zOrder: number }> = []
 
   for (let i = 0; i < snapshot.nodes.length; i++) {
     const nodeSnap = snapshot.nodes[i]
@@ -629,6 +649,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -649,6 +670,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -668,6 +690,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -685,6 +708,7 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
@@ -702,10 +726,25 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
               const mappedRegionId = regionIdMap.get(nodeSnap.regionId)
               if (mappedRegionId) canvasState.setNodeRegion(newNodeId, mappedRegionId)
             }
+            if (nodeSnap.zOrder != null) pendingZOrders.push({ nodeId: newNodeId, zOrder: nodeSnap.zOrder })
           }
         }
         break
       }
+    }
+  }
+
+  // Apply saved z-orders and advance nextZOrder past all restored values so new
+  // nodes don't collide with the restored stacking order.
+  if (pendingZOrders.length > 0) {
+    const cs = getCanvasState()
+    if (cs) {
+      let maxZ = -1
+      for (const { nodeId, zOrder } of pendingZOrders) {
+        cs.setNodeZOrder(nodeId, zOrder)
+        if (zOrder > maxZ) maxZ = zOrder
+      }
+      cs.bumpNextZOrder(maxZ + 1)
     }
   }
 
@@ -959,11 +998,11 @@ function runSave(): void {
       flushWaiters = []
       for (const resolve of waiters) resolve()
       // If more changes arrived while saving, re-arm idle timer.
-      if (pendingSave) scheduleSave()
+      if (pendingSave) markSessionDirty()
     })
 }
 
-function scheduleSave(): void {
+export function markSessionDirty(): void {
   pendingSave = true
   sessionDirty = true
   if (idleTimer) clearTimeout(idleTimer)
@@ -979,9 +1018,9 @@ export function setupAutoSave(canvasStoreApi?: StoreApi<CanvasStore>): () => voi
   }
   autoSaveSetUp = true
 
-  const unsubCanvas = canvasStoreApi ? canvasStoreApi.subscribe(scheduleSave) : () => {}
-  const unsubApp = useAppStore.subscribe(scheduleSave)
-  const unsubDock = useDockStore.subscribe(scheduleSave)
+  const unsubCanvas = canvasStoreApi ? canvasStoreApi.subscribe(markSessionDirty) : () => {}
+  const unsubApp = useAppStore.subscribe(markSessionDirty)
+  const unsubDock = useDockStore.subscribe(markSessionDirty)
 
   // Unconditional periodic save — ensures on-disk state is never more than
   // PERIODIC_INTERVAL stale, even without detected store changes. Protects

@@ -610,10 +610,15 @@ export interface NodeSnapshot {
   workingDirectory?: string | null
   ptyId?: string
   regionId?: string
+  /** Per-node dock layout tree — what's actually rendered inside the node. */
+  dockLayout?: DockLayoutNode | null
   /** Unsaved scratch-editor content, restored on load. */
   unsavedContent?: string
   /** Document panels only: sub-type discriminator for the viewer. */
   documentType?: 'pdf' | 'docx' | 'image'
+  /** Stacking order — higher = rendered on top. Restored so user-established
+   *  overlap order survives a restart. */
+  zOrder?: number
 }
 
 export interface SessionSnapshot {
@@ -695,6 +700,7 @@ export interface ProjectCanvasNode {
   regionId?: string
   documentType?: 'pdf' | 'docx' | 'image'
   dockLayout?: DockLayoutNode | null
+  zOrder?: number
 }
 
 export interface ProjectCanvasRegion {
@@ -704,6 +710,8 @@ export interface ProjectCanvasRegion {
   label: string
   color: string
   zOrder: number
+  /** Default working directory for terminals spawned inside this region. */
+  defaultCwd?: string
 }
 
 export interface ProjectPanelRef {
