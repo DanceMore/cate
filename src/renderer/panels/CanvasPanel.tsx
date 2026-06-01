@@ -14,6 +14,7 @@ import CanvasToolbar from '../canvas/CanvasToolbar'
 import WelcomePage from '../ui/WelcomePage'
 import type { PanelType, Point, DockLayoutNode, PanelLocation, WindowDockState } from '../../shared/types'
 import { useAppStore, useSelectedWorkspace, registerCanvasOps, unregisterCanvasOps, setActiveCanvasPanelId } from '../stores/appStore'
+import { markSessionDirty } from '../lib/session'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useStore } from 'zustand'
 import type { StoreApi } from 'zustand'
@@ -208,6 +209,13 @@ export default function CanvasPanel({ panelId, workspaceId, nodeId, renderPanelC
       unregisterCanvasOps(panelId)
     }
   }, [panelId, store])
+
+  // Multi-canvas auto-save: subscribe this panel's private store to the global
+  // auto-save logic. Changes like pan/zoom/movement in any canvas will now
+  // trigger a workspace.json flush.
+  useEffect(() => {
+    return store.subscribe(markSessionDirty)
+  }, [store])
 
   const handlePointerDown = useCallback(() => {
     setActiveCanvasPanelId(panelId)

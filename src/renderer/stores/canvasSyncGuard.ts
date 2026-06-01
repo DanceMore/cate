@@ -12,6 +12,12 @@
 export function shouldPreserveExistingCanvas(
   incomingNodeCount: number,
   existingNodeCount: number,
+  incomingRegionCount = 0,
+  existingRegionCount = 0,
 ): boolean {
-  return incomingNodeCount === 0 && existingNodeCount > 0
+  // Prevent data loss (issue #220): never overwrite a non-empty canvas (with
+  // nodes OR regions) with a completely empty one.
+  const incomingTotal = incomingNodeCount + incomingRegionCount
+  const existingTotal = existingNodeCount + existingRegionCount
+  return incomingTotal === 0 && existingTotal > 0
 }

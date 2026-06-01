@@ -610,6 +610,8 @@ export interface NodeSnapshot {
   workingDirectory?: string | null
   ptyId?: string
   regionId?: string
+  /** Per-node dock layout tree — what's actually rendered inside the node. */
+  dockLayout?: DockLayoutNode | null
   /** Unsaved scratch-editor content, restored on load. */
   unsavedContent?: string
   /** Document panels only: sub-type discriminator for the viewer. */
@@ -704,6 +706,8 @@ export interface ProjectCanvasRegion {
   label: string
   color: string
   zOrder: number
+  /** Default working directory for terminals spawned inside this region. */
+  defaultCwd?: string
 }
 
 export interface ProjectPanelRef {

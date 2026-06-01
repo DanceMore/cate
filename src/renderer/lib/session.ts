@@ -128,6 +128,7 @@ function buildWorkspaceFile(
     url: n.url ?? undefined,
     regionId: n.regionId,
     documentType: n.documentType,
+    dockLayout: n.dockLayout,
   }))
 
   const regions: ProjectCanvasRegion[] = snapshot.regions
@@ -138,6 +139,7 @@ function buildWorkspaceFile(
         label: r.label,
         color: r.color,
         zOrder: r.zOrder,
+        defaultCwd: r.defaultCwd,
       }))
     : []
 
@@ -236,6 +238,7 @@ export async function saveSession(): Promise<void> {
         filePath: panel?.filePath ?? undefined,
         url: panel?.url ?? undefined,
         regionId: node.regionId ?? undefined,
+        dockLayout: node.dockLayout,
         unsavedContent: panel?.type === 'editor' && !panel?.filePath
           ? panel?.unsavedContent
           : undefined,
@@ -427,6 +430,7 @@ export function projectFilesToSnapshot(
       url: pn.url,
       regionId: pn.regionId,
       documentType: pn.documentType,
+      dockLayout: pn.dockLayout,
       ptyId: ephemeral?.ptyId,
       workingDirectory: ephemeral?.workingDirectory,
       unsavedContent: ephemeral?.unsavedContent,
@@ -442,6 +446,7 @@ export function projectFilesToSnapshot(
       label: r.label,
       color: r.color,
       zOrder: r.zOrder,
+      defaultCwd: r.defaultCwd,
     }
   }
 
@@ -596,7 +601,15 @@ export async function restoreSession(snapshot: SessionSnapshot, canvasStoreApi?:
   const cs = getCanvasState()
   if (snapshot.regions && cs) {
     for (const region of Object.values(snapshot.regions)) {
-      const newId = cs.addRegion(region.label, region.origin, region.size, region.color)
+      const newId = cs.addRegion(
+        region.label,
+        region.origin,
+        region.size,
+        region.color,
+        region.id,
+        region.zOrder,
+        region.defaultCwd,
+      )
       regionIdMap.set(region.id, newId)
     }
   }
@@ -959,11 +972,11 @@ function runSave(): void {
       flushWaiters = []
       for (const resolve of waiters) resolve()
       // If more changes arrived while saving, re-arm idle timer.
-      if (pendingSave) scheduleSave()
+      if (pendingSave) markSessionDirty()
     })
 }
 
-function scheduleSave(): void {
+export function markSessionDirty(): void {
   pendingSave = true
   sessionDirty = true
   if (idleTimer) clearTimeout(idleTimer)
@@ -979,9 +992,9 @@ export function setupAutoSave(canvasStoreApi?: StoreApi<CanvasStore>): () => voi
   }
   autoSaveSetUp = true
 
-  const unsubCanvas = canvasStoreApi ? canvasStoreApi.subscribe(scheduleSave) : () => {}
-  const unsubApp = useAppStore.subscribe(scheduleSave)
-  const unsubDock = useDockStore.subscribe(scheduleSave)
+  const unsubCanvas = canvasStoreApi ? canvasStoreApi.subscribe(markSessionDirty) : () => {}
+  const unsubApp = useAppStore.subscribe(markSessionDirty)
+  const unsubDock = useDockStore.subscribe(markSessionDirty)
 
   // Unconditional periodic save — ensures on-disk state is never more than
   // PERIODIC_INTERVAL stale, even without detected store changes. Protects

@@ -132,24 +132,30 @@ async function tryReadJson<T>(filePath: string): Promise<T | null> {
   }
 }
 
-// Count of canvas nodes in a workspace file, or -1 when the value isn't a
-// readable workspace. Used by the data-loss guards (issue #220) to compare the
-// richness of two candidate files / an incoming write vs. what's on disk.
-function workspaceNodeCount(data: unknown): number {
+// Count of canvas items (nodes + regions) in a workspace file, or -1 when the
+// value isn't a readable workspace. Used by the data-loss guards (issue #220)
+// to compare the richness of two candidate files / an incoming write vs. what's
+// on disk.
+function workspaceContentCount(data: unknown): number {
   if (!isValidWorkspace(data)) return -1
-  const nodes = (data as ProjectWorkspaceFile).canvas?.nodes
-  return Array.isArray(nodes) ? nodes.length : -1
+  const ws = data as ProjectWorkspaceFile
+  const nodes = ws.canvas?.nodes
+  const regions = ws.canvas?.regions
+  let total = 0
+  if (Array.isArray(nodes)) total += nodes.length
+  if (Array.isArray(regions)) total += regions.length
+  return total
 }
 
-// True when writing `incomingNodeCount` nodes over the workspace.json at
+// True when writing `incomingContentCount` items over the workspace.json at
 // `rootPath` would replace a non-empty saved canvas with an empty one — the
 // issue #220 data-loss footgun. The sync read keeps the quit-time fallback
 // (saveProjectStateSync) honest without an await.
-function wouldEmptyOverwriteWorkspaceSync(rootPath: string, incomingNodeCount: number): boolean {
-  if (incomingNodeCount > 0) return false
+function wouldEmptyOverwriteWorkspaceSync(rootPath: string, incomingContentCount: number): boolean {
+  if (incomingContentCount > 0) return false
   try {
     const existing = JSON.parse(fsSync.readFileSync(workspacePath(rootPath), 'utf-8'))
-    return workspaceNodeCount(existing) > 0
+    return workspaceContentCount(existing) > 0
   } catch {
     return false
   }
@@ -176,7 +182,7 @@ async function readWorkspaceWithFallback(filePath: string): Promise<ProjectWorks
   let best: ProjectWorkspaceFile | null = null
   let bestCount = -1
   for (const candidate of candidates) {
-    const count = workspaceNodeCount(candidate)
+    const count = workspaceContentCount(candidate)
     if (count > bestCount) {
       best = candidate
       bestCount = count
@@ -211,11 +217,12 @@ export async function saveProjectState(
   // renderer's own shouldPreserveExistingCanvas guard (clearing every panel
   // already doesn't persist as empty for the selected workspace), extended to
   // the disk boundary so it also covers deferred/non-selected workspaces.
-  if (workspace.canvas.nodes.length === 0) {
-    const existingCount = workspaceNodeCount(await tryReadJson(workspacePath(rootPath)))
+  const incomingCount = workspace.canvas.nodes.length + workspace.canvas.regions.length
+  if (incomingCount === 0) {
+    const existingCount = workspaceContentCount(await tryReadJson(workspacePath(rootPath)))
     if (existingCount > 0) {
       log.warn(
-        'Refusing to overwrite %d-node canvas with an empty one for %s (issue #220 guard)',
+        'Refusing to overwrite %d-item canvas with an empty one for %s (issue #220 guard)',
         existingCount,
         cateDir(rootPath),
       )
@@ -261,7 +268,7 @@ export function saveProjectStateSync(): void {
       atomicWriteSync(sessionPath(rootPath), session)
       if (workspaceEditedExternallySync(rootPath)) {
         log.info('Skipping workspace.json sync overwrite for %s — edited externally', cateDir(rootPath))
-      } else if (wouldEmptyOverwriteWorkspaceSync(rootPath, workspaceNodeCount(JSON.parse(workspace)))) {
+      } else if (wouldEmptyOverwriteWorkspaceSync(rootPath, workspaceContentCount(JSON.parse(workspace)))) {
         // issue #220 guard: don't let the quit-time fallback flush an empty
         // canvas over a good one (mirrors the async saveProjectState guard).
         log.warn('Refusing empty workspace.json sync overwrite for %s (issue #220 guard)', cateDir(rootPath))
