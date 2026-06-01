@@ -10,17 +10,22 @@ import { ACCENT_COLORS, ACCENT_COLOR_NAMES, ACCENT_PALETTE, REGION_FILL_ALPHA, R
 // Parse rgba(...) string → { r, g, b, a }. Falls back to the first slot of the
 // shared accent palette so unparseable values stay in sync with the palette.
 const [FALLBACK_R, FALLBACK_G, FALLBACK_B] = ACCENT_PALETTE[0].vividRgb
+const rgbaCache = new Map<string, { r: number; g: number; b: number; a: number }>()
 function parseRgba(str: string): { r: number; g: number; b: number; a: number } {
+  const cached = rgbaCache.get(str)
+  if (cached) return cached
   const m = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/)
-  if (!m) return { r: FALLBACK_R, g: FALLBACK_G, b: FALLBACK_B, a: REGION_FILL_ALPHA }
-  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] ? +m[4] : 1 }
+  const res = !m
+    ? { r: FALLBACK_R, g: FALLBACK_G, b: FALLBACK_B, a: REGION_FILL_ALPHA }
+    : { r: +m[1], g: +m[2], b: +m[3], a: m[4] ? +m[4] : 1 }
+  rgbaCache.set(str, res)
+  return res
 }
 
 const REGION_MIN_SIZE = 100
 
 interface Props {
   region: CanvasRegion
-  zoomLevel: number
 }
 
 type ResizeHandle = 'top' | 'bottom' | 'left' | 'right' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'
@@ -36,7 +41,7 @@ const HANDLE_CURSORS: Record<ResizeHandle, string> = {
   bottomRight: 'nwse-resize',
 }
 
-const CanvasRegionComponent: React.FC<Props> = ({ region, zoomLevel }) => {
+const CanvasRegionComponent: React.FC<Props> = ({ region }) => {
   const canvasApi = useCanvasStoreApi()
   const isSelected = useCanvasStoreContext((s) => s.selectedRegionIds.has(region.id))
   const isDropTarget = useCanvasStoreContext((s) => s.dropTargetRegionId === region.id)
@@ -97,9 +102,8 @@ const CanvasRegionComponent: React.FC<Props> = ({ region, zoomLevel }) => {
 
     const handleMouseMove = (ev: MouseEvent) => {
       if (!dragRef.current) return
-      const zoom = canvasApi.getState().zoomLevel
-
       const state = canvasApi.getState()
+      const zoom = state.zoomLevel
 
       // Determine if this is truly a multi-drag (more than just this region + its children)
       const hasOtherRegions = state.selectedRegionIds.size > 1
@@ -356,12 +360,6 @@ const CanvasRegionComponent: React.FC<Props> = ({ region, zoomLevel }) => {
     window.addEventListener('mouseup', handleMouseUp, { signal })
   }, [region.id, region.origin, region.size])
 
-  // Bracket dimensions in screen px, divided by zoom so they stay a constant
-  // on-screen size regardless of the canvas zoom level.
-  const bracketLen = 13 / zoomLevel
-  const bracketThick = 2 / zoomLevel
-  const bracketNudge = 4 / zoomLevel
-
   return (
     <>
       <div
@@ -412,7 +410,7 @@ const CanvasRegionComponent: React.FC<Props> = ({ region, zoomLevel }) => {
               padding: 0,
               outline: 'none',
               minWidth: 60,
-              transform: `scale(${1 / Math.max(zoomLevel, 0.6)})`,
+              transform: 'scale(calc(1 / max(var(--zoom, 1), 0.6)))',
               transformOrigin: 'bottom left',
             }}
           />
@@ -438,7 +436,7 @@ const CanvasRegionComponent: React.FC<Props> = ({ region, zoomLevel }) => {
               whiteSpace: 'nowrap',
               userSelect: 'none',
               cursor: 'text',
-              transform: `scale(${1 / Math.max(zoomLevel, 0.6)})`,
+              transform: 'scale(calc(1 / max(var(--zoom, 1), 0.6)))',
               transformOrigin: 'bottom left',
             }}
           >
@@ -454,23 +452,22 @@ const CanvasRegionComponent: React.FC<Props> = ({ region, zoomLevel }) => {
         const isHovered = hoveredHandle === handle
         const alpha = isHovered ? 0.95 : 0.55
         const color = `rgba(${parseRgba(region.color).r}, ${parseRgba(region.color).g}, ${parseRgba(region.color).b}, ${alpha})`
-        const nudge = bracketNudge
         return (
           <div
             key={handle}
             data-region-resize-handle={handle}
             style={{
               position: 'absolute',
-              left: region.origin.x + (isLeft ? 0 : region.size.width - bracketLen),
-              top: region.origin.y + (isTop ? 0 : region.size.height - bracketLen),
-              width: bracketLen,
-              height: bracketLen,
-              borderTop: isTop ? `${bracketThick}px solid ${color}` : 'none',
-              borderBottom: !isTop ? `${bracketThick}px solid ${color}` : 'none',
-              borderLeft: isLeft ? `${bracketThick}px solid ${color}` : 'none',
-              borderRight: !isLeft ? `${bracketThick}px solid ${color}` : 'none',
+              left: isLeft ? region.origin.x : `calc(${region.origin.x + region.size.width}px - 13px / var(--zoom, 1))`,
+              top: isTop ? region.origin.y : `calc(${region.origin.y + region.size.height}px - 13px / var(--zoom, 1))`,
+              width: 'calc(13px / var(--zoom, 1))',
+              height: 'calc(13px / var(--zoom, 1))',
+              borderTop: isTop ? `calc(2px / var(--zoom, 1)) solid ${color}` : 'none',
+              borderBottom: !isTop ? `calc(2px / var(--zoom, 1)) solid ${color}` : 'none',
+              borderLeft: isLeft ? `calc(2px / var(--zoom, 1)) solid ${color}` : 'none',
+              borderRight: !isLeft ? `calc(2px / var(--zoom, 1)) solid ${color}` : 'none',
               transform: isHovered
-                ? `translate(${isLeft ? -nudge : nudge}px, ${isTop ? -nudge : nudge}px)`
+                ? `translate(${isLeft ? 'calc(-4px / var(--zoom, 1))' : 'calc(4px / var(--zoom, 1))'}, ${isTop ? 'calc(-4px / var(--zoom, 1))' : 'calc(4px / var(--zoom, 1))'})`
                 : 'translate(0, 0)',
               transition: 'transform 140ms ease, border-color 140ms ease',
               cursor: HANDLE_CURSORS[handle],

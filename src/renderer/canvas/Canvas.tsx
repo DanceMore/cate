@@ -90,7 +90,6 @@ function injectCanvasInteractingStyle(): void {
 }
 
 const RegionsLayer: React.FC = React.memo(() => {
-  const zoomLevel = useCanvasStoreContext((s) => s.zoomLevel)
   const regionList = useCanvasStoreContext(
     (s) => Object.values(s.regions),
     shallow,
@@ -98,7 +97,7 @@ const RegionsLayer: React.FC = React.memo(() => {
   return (
     <>
       {regionList.map((region) => (
-        <CanvasRegionComponent key={region.id} region={region} zoomLevel={zoomLevel} />
+        <CanvasRegionComponent key={region.id} region={region} />
       ))}
     </>
   )
@@ -150,9 +149,13 @@ const Canvas: React.FC<CanvasProps> = ({ children, onCreateAtPoint, panelId }) =
   useEffect(() => {
     const applyTransform = (zoom: number, offset: { x: number; y: number }) => {
       const el = worldRef.current
-      if (!el) return
-      el.style.transform = `scale(${zoom}) translate(${offset.x / zoom}px, ${offset.y / zoom}px)`
-      el.style.setProperty('--zoom', String(zoom))
+      if (el) {
+        el.style.transform = `scale(${zoom}) translate(${offset.x / zoom}px, ${offset.y / zoom}px)`
+        el.style.setProperty('--zoom', String(zoom))
+      }
+      if (canvasRef.current) {
+        canvasRef.current.style.setProperty('--zoom', String(zoom))
+      }
     }
 
     // Apply current state immediately on mount
@@ -192,6 +195,8 @@ const Canvas: React.FC<CanvasProps> = ({ children, onCreateAtPoint, panelId }) =
     el.addEventListener('wheel', onWheel, { capture: true, passive: false })
     return () => el.removeEventListener('wheel', onWheel, { capture: true })
   }, []) // mount-only — no dependency on handleWheel
+
+  const { zoomLevel: initialZoom } = canvasApi.getState()
 
   // Track container size for grid visibility calculations
   useEffect(() => {
@@ -423,7 +428,7 @@ const Canvas: React.FC<CanvasProps> = ({ children, onCreateAtPoint, panelId }) =
       data-canvas-container
       data-canvas-panel-id={panelId}
       className="relative w-full h-full overflow-hidden bg-canvas-bg"
-      style={{ cursor: idleCursor }}
+      style={{ cursor: idleCursor, ['--zoom' as any]: String(initialZoom) }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
